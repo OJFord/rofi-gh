@@ -1,0 +1,90 @@
+name: release
+
+on:
+  release:
+    types:
+      - published
+
+  # packaging-only updates
+  push:
+    paths:
+      - PKGBUILD
+    branches-ignore:
+      - '!master'
+    tags-ignore:
+      # these will come through release event
+      - v*
+
+jobs:
+  aur:
+    runs-on: ubuntu-latest
+    container: archlinux
+
+    steps:
+      - run: pacman -Sy --noconfirm git
+      - uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+
+      - name: Set version, release
+        if: ${{ github.event_name == 'release' }}
+        run: |
+          tag='${{ github.event.release.tag_name }}'
+          # not outputs because we can't use the same `id:` here as in the `if: push event` step
+          echo "PKG_TAG=$tag" >> "$GITHUB_ENV"
+          echo "PKG_VERSION=${tag#v}" >> "$GITHUB_ENV"
+          echo "PKG_RELEASE=1" >> "$GITHUB_ENV"
+
+      - name: Init AUR
+        id: aur
+        run: |
+          pacman -Sy --noconfirm git openssh
+          git remote add aur "ssh://aur@aur.archlinux.org/$(grep -E '^pkgname=' PKGBUILD | sed 's/pkgname=//').git"
+          ssh-keyscan aur.archlinux.org >> /etc/ssh/ssh_known_hosts
+          echo -e '${{ secrets.AUR_PRIVATE_KEY }}' > /etc/ssh/aur
+          chmod 600 /etc/ssh/aur
+          echo -e "Host aur.archlinux.org\n\tIdentityFile /etc/ssh/aur" > /etc/ssh/ssh_config
+          git fetch aur # necessary to init repo for first release
+          git checkout aur/master
+
+      - name: Get latest version
+        if: ${{ github.event_name == 'push' }}
+        uses: pozetroninc/github-action-get-latest-release@v0.5.0
+        with:
+          repository: ${{ github.repository }}
+        id: get-latest
+
+      - name: Set version, release
+        if: ${{ github.event_name == 'push' && steps.aur.outcome == 'success' }} # need to be on aur/master
+        id: pkgverrel-from-aur
+        run: |
+          tag='${{ steps.get-latest.outputs.release }}'
+          last_rel="$({ grep -E '^pkgrel=[0-9]+$' PKGBUILD || echo 0 ; } | sed 's/pkgrel=//')"
+          # not outputs because we can't use the same `id:` here as in the `if: release event` step
+          echo "PKG_TAG=$tag" >> "$GITHUB_ENV"
+          echo "PKG_VERSION=${tag#v}" >> "$GITHUB_ENV"
+          echo "PKG_RELEASE=$((++last_rel))" >> "$GITHUB_ENV"
+
+      - name: Update PKGBUILD
+        if: ${{ steps.pkgverrel-from-aur.outcome == 'success' }} # needs to come first
+        run: |
+          useradd pkger
+          chown -R :pkger .
+          chmod -R g+w .
+          t="$(mktemp)"
+          curl --output "$t" --location "https://github.com/${{ github.repository }}/archive/${PKG_TAG}.tar.gz"
+          check="$(md5sum "$t" | cut -d' ' -f1)"
+          git checkout '${{ github.ref }}' -- PKGBUILD || echo Assuming first commit of PKGBUILD
+          sed -i "s/md5sums=.*/md5sums=('$check')/" PKGBUILD
+          sed -i "s/pkgver=.*$/pkgver=$PKG_VERSION/" PKGBUILD
+          sed -i "s/pkgrel=.*$/pkgrel=$PKG_RELEASE/" PKGBUILD
+          pacman -Sy --noconfirm binutils
+          su -c 'makepkg --printsrcinfo > .SRCINFO' pkger
+
+      - name: Release
+        run: |
+          git config user.name "$(git log -n1 --pretty='%cn') (CI)"
+          git config user.email "$(git log -n1 --pretty='%ce' | sed 's/@/+ci@/')"
+          git add PKGBUILD .SRCINFO
+          git commit -m "Release v${PKG_VERSION}r${PKG_RELEASE}" -- PKGBUILD .SRCINFO
+          git push aur HEAD:master
