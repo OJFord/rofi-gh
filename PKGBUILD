@@ -21,6 +21,8 @@ package() {
     set -eu
     cd "$pkgname-$pkgver"
 
+    install -D -m644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+
     mkdir -p "$pkgdir/usr/bin"
 
     # shellcheck disable=SC2043
