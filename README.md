@@ -13,6 +13,6 @@ Ensure the scripts you wish to use are somewhere on your `$PATH` (for example, `
 
 This one was my initial motivation for `rofi-gh`, so that I could sit down in the mood to work on something, but with nothing particular in mind, and see what issues I have open in my repositories. For that reason, the default (and presently only) query is:
 
-  - [`user:@me is:open`](//github.com/issues?q=user%3A%40me+is%3Aopen) (default)
+  - [`user:@me is:open archived:false`](//github.com/issues?q=user%3A%40me+is%3Aopen+archived%3Afalse) (default)
 
 But I'm certainly open to adding configuration if you have other use-cases/desires (open an issue or PR).
