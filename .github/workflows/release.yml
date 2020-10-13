@@ -3,7 +3,7 @@ name: release
 on:
   release:
     types:
-      - published
+      - released
 
   # packaging-only updates
   push:
@@ -28,24 +28,13 @@ jobs:
 
       - name: Set version, release
         if: ${{ github.event_name == 'release' }}
+        id: pkgverrel-from-gh
         run: |
           tag='${{ github.event.release.tag_name }}'
           # not outputs because we can't use the same `id:` here as in the `if: push event` step
           echo "PKG_TAG=$tag" >> "$GITHUB_ENV"
           echo "PKG_VERSION=${tag#v}" >> "$GITHUB_ENV"
           echo "PKG_RELEASE=1" >> "$GITHUB_ENV"
-
-      - name: Init AUR
-        id: aur
-        run: |
-          pacman -Sy --noconfirm git openssh
-          git remote add aur "ssh://aur@aur.archlinux.org/$(grep -E '^pkgname=' PKGBUILD | sed 's/pkgname=//').git"
-          ssh-keyscan aur.archlinux.org >> /etc/ssh/ssh_known_hosts
-          echo -e '${{ secrets.AUR_PRIVATE_KEY }}' > /etc/ssh/aur
-          chmod 600 /etc/ssh/aur
-          echo -e "Host aur.archlinux.org\n\tIdentityFile /etc/ssh/aur" > /etc/ssh/ssh_config
-          git fetch aur # necessary to init repo for first release
-          git checkout aur/master
 
       - name: Get latest version
         if: ${{ github.event_name == 'push' }}
@@ -65,8 +54,20 @@ jobs:
           echo "PKG_VERSION=${tag#v}" >> "$GITHUB_ENV"
           echo "PKG_RELEASE=$((++last_rel))" >> "$GITHUB_ENV"
 
+      - name: Init AUR
+        id: aur
+        run: |
+          pacman -Sy --noconfirm git openssh
+          git remote add aur "ssh://aur@aur.archlinux.org/$(grep -E '^pkgname=' PKGBUILD | sed 's/pkgname=//').git"
+          ssh-keyscan aur.archlinux.org >> /etc/ssh/ssh_known_hosts
+          echo -e '${{ secrets.AUR_PRIVATE_KEY }}' > /etc/ssh/aur
+          chmod 600 /etc/ssh/aur
+          echo -e "Host aur.archlinux.org\n\tIdentityFile /etc/ssh/aur" > /etc/ssh/ssh_config
+          git fetch aur # necessary to init repo for first release
+          git checkout aur/master
+
       - name: Update PKGBUILD
-        if: ${{ steps.pkgverrel-from-aur.outcome == 'success' }} # needs to come first
+        if: ${{ steps.pkgverrel-from-aur.outcome == 'success' || steps.pkgverrel-from-gh.outcome == 'success' }} # needs to come first
         run: |
           useradd pkger
           chown -R :pkger .

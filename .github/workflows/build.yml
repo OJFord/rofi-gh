@@ -16,10 +16,13 @@ jobs:
 
     steps:
       - run: |
-          echo '::set-output name=version:${GITHUB_REF#refs/tags/v}'
+          echo "::set-output name=version::${GITHUB_REF#refs/tags/v}"
         id: metadata
 
       - uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tag_name: ${{ steps.metadata.outputs.version }}
           release_name: v${{ steps.metadata.outputs.version }}
+          tag_name: v${{ steps.metadata.outputs.version }}
+
