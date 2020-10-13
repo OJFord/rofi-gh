@@ -8,7 +8,7 @@ mkdir -p "$(dirname "$issuesjson")"
 
 initial_call_list() {
     gh api search/issues -X GET -f q='user:@me is:open archived:false' \
-        | jq '.items | map({url:.html_url, display:("[" + (.repository_url | split("/"))[-1] + "] " + .title)})' \
+        | jq '.items | map({url:.html_url, display:("[" + (.repository_url | split("/"))[-1] + "] " + .title + " (#" + (.number | tostring) + ")")})' \
         | tee "$issuesjson" \
         | jq -r 'map(.display)[]' \
         ;
