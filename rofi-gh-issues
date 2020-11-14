@@ -25,7 +25,11 @@ selected_entry() {
 
 case "$ROFI_RETV" in
     0)
-        initial_call_list
+        if [ "${1-NOARG}" = --use-cache ]; then
+            jq -r 'map(.display)' "$issuesjson"
+        else
+            initial_call_list
+        fi
         exit "$?"
         ;;
     1)
